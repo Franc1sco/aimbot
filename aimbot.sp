@@ -5,7 +5,7 @@ new bool:aimbot[MAXPLAYERS+1];
 
 new bool:csgo;
 
-#define DATA "1.0"
+#define DATA "1.1"
 
 public Plugin:myinfo =
 {
@@ -35,11 +35,43 @@ public OnClientPostAdminCheck(client)
 
 public Action:aimbotcmd(client, args)
 {
-	if(!aimbot[client]) aimbot[client] = true;
-	else aimbot[client] = false;
+	if(args < 1)
+	{
+		if(!aimbot[client]) aimbot[client] = true;
+		else aimbot[client] = false;
 	
-	ReplyToCommand(client, "AIMBOT %s", aimbot[client] ? "ENABLED":"DISABLED");
+		ReplyToCommand(client, "AIMBOT %s on you", aimbot[client] ? "ENABLED":"DISABLED");
+	}
+	else
+	{
 	
+		decl String:strTarget[32]; GetCmdArg(1, strTarget, sizeof(strTarget)); 
+	
+		// Process the targets 
+		decl String:strTargetName[MAX_TARGET_LENGTH]; 
+		decl TargetList[MAXPLAYERS], TargetCount; 
+		decl bool:TargetTranslate; 
+	
+		if ((TargetCount = ProcessTargetString(strTarget, 0, TargetList, MAXPLAYERS, COMMAND_FILTER_CONNECTED, 
+					strTargetName, sizeof(strTargetName), TargetTranslate)) <= 0) 
+		{ 
+			ReplyToCommand(client, "Target not found");
+			return Plugin_Handled; 
+		} 
+	
+		// Apply to all targets 
+		for (new i = 0; i < TargetCount; i++) 
+		{ 
+			new iClient = TargetList[i]; 
+			if (IsClientInGame(iClient)) 
+			{ 
+				if(!aimbot[iClient]) aimbot[iClient] = true;
+				else aimbot[iClient] = false;
+				
+				ReplyToCommand(client, " AIMBOT %s on %N", aimbot[iClient] ? "ENABLED":"DISABLED",iClient);
+			} 
+		}   
+	}
 	return Plugin_Handled;
 }
 
