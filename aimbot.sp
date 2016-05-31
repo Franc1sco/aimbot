@@ -5,17 +5,21 @@ new bool:aimbot[MAXPLAYERS+1];
 
 new bool:csgo;
 
+#define DATA "1.0"
+
 public Plugin:myinfo =
 {
 	name = "SM Aimbot",
 	author = "Franc1sco franug",
 	description = "Give you a legal aimbot made by sourcemod",
-	version = "1.0",
+	version = DATA,
 	url = "http://steamcommunity.com/id/franug"
 };
 
 public OnPluginStart()
 {
+	CreateConVar("sm_aimbot_version", DATA, "", FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_DONTRECORD|FCVAR_NOTIFY);
+	
 	HookEvent("weapon_fire", EventWeaponFire, EventHookMode_Pre);
 	
 	RegAdminCmd("sm_aimbot", aimbotcmd, ADMFLAG_ROOT);
