@@ -1,11 +1,12 @@
 #include <sourcemod>
 #include <sdktools>
+#include <sdkhooks>
 
 new bool:aimbot[MAXPLAYERS+1];
 
 new bool:csgo;
 
-#define DATA "1.1"
+#define DATA "1.2"
 
 public Plugin:myinfo =
 {
@@ -26,11 +27,18 @@ public OnPluginStart()
 	
 	if(GetEngineVersion() == Engine_CSGO) csgo = true;
 	else csgo = false;
+	
+	
+	for (new client = 1; client <= MaxClients; client++) 
+        if (IsClientInGame(client))
+				OnClientPutInServer(client);
+			
 }
 
-public OnClientPostAdminCheck(client)
+public OnClientPutInServer(client)
 {
 	aimbot[client] = false;
+	SDKHook(client, SDKHook_PostThinkPost, OnPostThinkPost);
 }
 
 public Action:aimbotcmd(client, args)
@@ -86,6 +94,31 @@ public Action:EventWeaponFire(Handle:event, const String:name[], bool:dontBroadc
 		LookAtClient(client, objetivo);
 }
 
+public OnPostThinkPost(client)
+{
+	if(!aimbot[client]) return;
+	
+	new ActiveWeapon = GetEntPropEnt(client, Prop_Send, "m_hActiveWeapon");
+	
+	if (!IsValidEdict(ActiveWeapon) || (ActiveWeapon == -1))
+	{
+		return;
+	}
+	
+	new Float:NoRecoil[3];
+	if(!csgo)
+	{
+		SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
+		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", NoRecoil);
+	}
+	else
+	{
+		SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
+		SetEntPropVector(client, Prop_Send, "m_viewPunchAngle", NoRecoil);
+		SetEntPropVector(client, Prop_Send, "m_aimPunchAngle", NoRecoil);
+	}
+}
+
 public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:angles[3])
 {
 	if(!IsClientInGame(client) || !aimbot[client] || !IsPlayerAlive(client)) return;
@@ -101,20 +134,12 @@ public Action:OnPlayerRunCmd(client, &buttons, &impulse, Float:vel[3], Float:ang
 
 stock LookAtClient(client, target)
 {
-	if(!csgo)
-	{
-		new Float:NoRecoil[3];
-		SetEntProp(client, Prop_Send, "m_iShotsFired", 0);
-		SetEntPropVector(client, Prop_Send, "m_vecPunchAngle", NoRecoil);
-	}
-	
-	
 	new Float:TargetPos[3], Float:TargetAngles[3], Float:ClientPos[3], Float:Result[3], Float:Final[3];
 
 	GetClientEyePosition(client, ClientPos);
 	GetClientEyePosition(target, TargetPos);
-    
-	GetClientAbsAngles(target, TargetAngles);
+	
+	GetClientEyeAngles(target, TargetAngles);
     
 	decl Float:vecFinal[3];
 	AddInFrontOf(TargetPos, TargetAngles, 8.0, vecFinal);
