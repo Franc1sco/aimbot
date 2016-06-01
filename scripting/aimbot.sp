@@ -57,6 +57,7 @@ INCLUDES
 #include <sdkhooks>
 
 // Protection for SMAC users.
+#undef REQUIRE_PLUGIN
 #tryinclude <smac>
 
 /****************************************************************************************************
