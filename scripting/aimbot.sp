@@ -89,7 +89,7 @@ public Plugin myinfo =
 	author = "Franc1sco franug, SM9", 
 	description = "Give you a legal aimbot made by sourcemod", 
 	version = VERSION, 
-	url = ""
+	url = "https://github.com/Franc1sco/aimbot"
 };
 
 public void OnPluginStart()
