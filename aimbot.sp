@@ -13,7 +13,7 @@ ETIQUETTE.
 #pragma newdecls required
 #pragma semicolon 1
 
-#define VERSION "1.4.1"
+#define VERSION "1.4"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsValidClient(%1))
 
 public Plugin myinfo = 
@@ -28,7 +28,7 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
-	HookEventEx("weapon_fire", Event_WeaponFire, EventHookMode_Pre);
+	HookEvent("weapon_fire", Event_WeaponFire, EventHookMode_Pre);
 	RegAdminCmd("sm_aimbot", Cmd_Aimbot, ADMFLAG_ROOT);
 	
 	g_bCSGO = GetEngineVersion() == Engine_CSGO ? true : false;
