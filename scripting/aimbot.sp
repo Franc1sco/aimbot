@@ -370,6 +370,10 @@ stock int GetClosestClient(int iClient)
 			continue;
 		}
 		
+		if(GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
+			continue;
+		}
+		
 		fClosestDistance = fTargetDistance;
 		iClosestTarget = i;
 	}
