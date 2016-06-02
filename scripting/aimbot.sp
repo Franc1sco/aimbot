@@ -48,6 +48,14 @@ CHANGELOG
 	 				Will only activate aimbot if target is within this distance of client
 	 	- Added Cvar sm_aimbot_flashed (1)
 	 				Block aimbot when player is flashed
+	 				
+	1.7 ~
+		- Credits to Poheart
+		- Added Cvar sm_aimbot_norecoil (0/1/2)
+					Allow which recoil control mode the aimbot should be used.
+					0 = Disable recoil control
+					1 = Server recoil remove
+					2 = Auto-Spray control (Recoil Control System)
 
 ****************************************************************************************************
 Planned: 
@@ -83,7 +91,10 @@ bool g_bAimbotEveryone = false;
 bool g_bAimbotAutoAim = false;
 bool g_bAimbotFlashed = true;
 bool g_bFlashed[MAXPLAYERS + 1] = false;
-
+/****************************************************************************************************
+INTEGERS.
+*****************************************************************************************************/
+int g_iRecoilMode = 1;
 /****************************************************************************************************
 FLOATS.
 *****************************************************************************************************/
@@ -99,8 +110,9 @@ Handle g_hCvarAimbotAutoAim = null;
 Handle g_hCvarFov = null;
 Handle g_hCvarDistance = null;
 Handle g_hCvarFlashbang = null;
+Handle g_hCvarRecoilMode = null;
 
-#define VERSION "1.5"
+#define VERSION "1.7"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsClientValid(%1))
 
 public Plugin myinfo = 
@@ -117,6 +129,7 @@ public void OnPluginStart()
 	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 	HookConVarChange(g_hCvarAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone"), OnCvarChanged);
 	HookConVarChange(g_hCvarAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim"), OnCvarChanged);
+	HookConVarChange(g_hCvarRecoilMode = CreateConVar("sm_aimbot_norecoil", "1", "Aimbot recoil control - 0 = disable, 1 = remove recoil, 2 = recoil control system"), OnCvarChanged);
 	HookConVarChange(g_hCvarFov = CreateConVar("sm_aimbot_fov", "20.0", "Will only activate aimbot if target is within this fov of client (1.0 to disable)"), OnCvarChanged);
 	HookConVarChange(g_hCvarDistance = CreateConVar("sm_aimbot_distance", "8000.0", "Will only activate aimbot if target is within this distance of client (1.0 to disable)"), OnCvarChanged);
 	HookConVarChange(g_hCvarFlashbang = CreateConVar("sm_aimbot_flashed", "1", "Block aimbot when player is flashed"), OnCvarChanged);
@@ -172,6 +185,8 @@ public void OnCvarChanged(Handle hConvar, char[] chOldValue, char[] chNewValue)
 		g_fMaxAimDistance = GetConVarFloat(g_hCvarDistance);
 	} else if (hConvar == g_hCvarFlashbang) {
 		g_bAimbotFlashed = GetConVarBool(g_hCvarFlashbang);
+	} else if (hConvar == g_hCvarRecoilMode) {
+		g_iRecoilMode = GetConVarInt(g_hCvarRecoilMode);
 	}
 	
 }
@@ -232,7 +247,7 @@ public Action Cmd_Aimbot(int iClient, int iArgs)
 			
 			ToggleAim(iClient2, bEnable);
 			
-			if(iClient != iClient2) {
+			if (iClient != iClient2) {
 				ReplyToCommand(iClient, "Aimbot has been %s for %N.", bEnable ? "Enabled":"Disabled", iClient2);
 			}
 		}
@@ -290,7 +305,7 @@ public Action Event_WeaponFire(Handle hEvent, const char[] chName, bool bDontBro
 	
 	int iTarget = GetClosestClient(iClient);
 	
-	if(iTarget > 0) {
+	if (iTarget > 0) {
 		LookAtClient(iClient, iTarget);
 	}
 	return Plugin_Continue;
@@ -307,15 +322,16 @@ public void OnClientThink(int iClient)
 	if (!IsValidEdict(iActiveWeapon) || iActiveWeapon == -1) {
 		return;
 	}
-	
 	// NoSpread Addition
 	SetEntPropFloat(iActiveWeapon, Prop_Send, "m_fAccuracyPenalty", 0.0);
-	
+
 	// Not sure which Props exist in other games.
 	if (g_bCSGO) {
-		SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", NULL_VECTOR);
-		SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngleVel", NULL_VECTOR);
-		SetEntPropVector(iClient, Prop_Send, "m_viewPunchAngle", NULL_VECTOR);
+		if (g_iRecoilMode == 1) {
+			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", NULL_VECTOR);
+			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngleVel", NULL_VECTOR);
+			SetEntPropVector(iClient, Prop_Send, "m_viewPunchAngle", NULL_VECTOR);
+		}
 	} else {
 		SetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", NULL_VECTOR);
 	}
@@ -359,6 +375,17 @@ stock void LookAtClient(int iClient, int iTarget)
 	MakeVectorFromPoints(fClientPos, fVecFinal, fFinalPos);
 	
 	GetVectorAngles(fFinalPos, fFinalPos);
+	
+	
+	//Recoil Control System
+	if (g_iRecoilMode == 2) {
+		float vecPunchAngle[3];
+		GetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", vecPunchAngle);
+		fFinalPos[0] -= vecPunchAngle[0] * GetConVarFloat(g_hPredictionConVars[5]);
+		fFinalPos[1] -= vecPunchAngle[1] * GetConVarFloat(g_hPredictionConVars[5]);
+	}
+	
+	
 	TeleportEntity(iClient, NULL_VECTOR, fFinalPos, NULL_VECTOR);
 }
 
@@ -393,37 +420,37 @@ stock int GetClosestClient(int iClient)
 		if (iClient == i || GetClientTeam(i) == iClientTeam || !IsPlayerAlive(i)) {
 			continue;
 		}
-
+		
 		GetClientAbsOrigin(i, fTargetOrigin); fTargetDistance = GetVectorDistance(fClientOrigin, fTargetOrigin);
-
+		
 		if (fTargetDistance > fClosestDistance && fClosestDistance > -1.0) {
 			continue;
 		}
-
+		
 		if (!ClientCanSeeTarget(iClient, i)) {
 			continue;
 		}
-
-		if(GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
+		
+		if (GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
 			continue;
 		}
-
+		
 		if (g_fMaxAimDistance != 0.0 && fTargetDistance > g_fMaxAimDistance) {
 			continue;
 		}
-
+		
 		if (g_fMaxAimFov != 0.0 && !IsTargetInSightRange(iClient, i, g_fMaxAimFov, g_fMaxAimDistance)) {
 			continue;
 		}
-
+		
 		if (g_bAimbotFlashed && g_bFlashed[iClient]) {
 			continue;
 		}
-
+		
 		fClosestDistance = fTargetDistance;
 		iClosestTarget = i;
 	}
-
+	
 	return iClosestTarget;
 }
 
@@ -458,11 +485,11 @@ public bool Base_TraceFilter(int iEntity, int iContentsMask, int iData) {
 #if defined _smac_included
 public Action SMAC_OnCheatDetected(int iClient, const char[] chModule, DetectionType dType)
 {
-	if(!g_bAimbot[iClient]) {
+	if (!g_bAimbot[iClient]) {
 		return Plugin_Continue;
 	}
 	
-	if(dType == Detection_Aimbot || dType == Detection_Eyeangles) {
+	if (dType == Detection_Aimbot || dType == Detection_Eyeangles) {
 		return Plugin_Handled;
 	}
 	
@@ -481,12 +508,12 @@ stock bool IsClientValid(int iClient)
 
 stock bool IsTargetInSightRange(int client, int target, float angle = 90.0, float distance = 0.0, bool heightcheck = true, bool negativeangle = false)
 {
-	if(angle > 360.0)
+	if (angle > 360.0)
 		angle = 360.0;
-		
-	if(angle < 0.0)
+	
+	if (angle < 0.0)
 		return false;
-		
+	
 	float clientpos[3];
 	float targetpos[3];
 	float anglevector[3];
@@ -498,29 +525,29 @@ stock bool IsTargetInSightRange(int client, int target, float angle = 90.0, floa
 	anglevector[0] = anglevector[2] = 0.0;
 	GetAngleVectors(anglevector, anglevector, NULL_VECTOR, NULL_VECTOR);
 	NormalizeVector(anglevector, anglevector);
-	if(negativeangle)
+	if (negativeangle)
 		NegateVector(anglevector);
-
+	
 	GetClientAbsOrigin(client, clientpos);
 	GetClientAbsOrigin(target, targetpos);
 	
-	if(heightcheck && distance > 0)
+	if (heightcheck && distance > 0)
 		resultdistance = GetVectorDistance(clientpos, targetpos);
-		
+	
 	clientpos[2] = targetpos[2] = 0.0;
 	MakeVectorFromPoints(clientpos, targetpos, targetvector);
 	NormalizeVector(targetvector, targetvector);
 	
 	resultangle = RadToDeg(ArcCosine(GetVectorDotProduct(targetvector, anglevector)));
 	
-	if(resultangle <= angle/2)	
+	if (resultangle <= angle / 2)
 	{
-		if(distance > 0)
+		if (distance > 0)
 		{
-			if(!heightcheck)
+			if (!heightcheck)
 				resultdistance = GetVectorDistance(clientpos, targetpos);
-				
-			if(distance >= resultdistance)
+			
+			if (distance >= resultdistance)
 				return true;
 			else return false;
 		}
@@ -531,21 +558,21 @@ stock bool IsTargetInSightRange(int client, int target, float angle = 90.0, floa
 }
 
 public Action Event_PlayerBlind(Handle event, const char[] name, bool dontBroadcast)
-{ 
+{
 	int client = GetClientOfUserId(GetEventInt(event, "userid"));
-    
+	
 	if (GetEntPropFloat(client, Prop_Send, "m_flFlashMaxAlpha") >= 180.0)
-    {
-    	float duration = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");
-        if (duration >= 1.5)
-        {
-            g_bFlashed[client] = true;
-            CreateTimer(duration, UnFlashed_Timer, client);
-        }
-    }
+	{
+		float duration = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");
+		if (duration >= 1.5)
+		{
+			g_bFlashed[client] = true;
+			CreateTimer(duration, UnFlashed_Timer, client);
+		}
+	}
 }
 
 public Action UnFlashed_Timer(Handle timer, int client)
 {
 	g_bFlashed[client] = false;
-}
+} 
