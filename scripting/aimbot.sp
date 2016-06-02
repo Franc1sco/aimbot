@@ -40,6 +40,14 @@ CHANGELOG
 		- Further improved clientside prediction for much better No Spread!
 		- Protection to prevent SMAC bans.
 		- Improved aimbot accuracy slightly.
+	1.6 ~
+		- Credits to Zipcore + Addicted
+		- Added Cvar sm_aimbot_fov (20.0)
+					Will only activate aimbot if target is within this fov of client
+	 	- Added Cvar sm_aimbot_distance (8000.0)
+	 				Will only activate aimbot if target is within this distance of client
+	 	- Added Cvar sm_aimbot_flashed (1)
+	 				Block aimbot when player is flashed
 
 ****************************************************************************************************
 Planned: 
@@ -73,6 +81,14 @@ bool g_bAimbot[MAXPLAYERS + 1] = false;
 bool g_bCSGO = false;
 bool g_bAimbotEveryone = false;
 bool g_bAimbotAutoAim = false;
+bool g_bAimbotFlashed = true;
+bool g_bFlashed[MAXPLAYERS + 1] = false;
+
+/****************************************************************************************************
+FLOATS.
+*****************************************************************************************************/
+float g_fMaxAimFov = 0.0;
+float g_fMaxAimDistance = 0.0;
 
 /****************************************************************************************************
 CONVARS.
@@ -80,6 +96,9 @@ CONVARS.
 Handle g_hPredictionConVars[9] = null;
 Handle g_hCvarAimbotEveryone = null;
 Handle g_hCvarAimbotAutoAim = null;
+Handle g_hCvarFov = null;
+Handle g_hCvarDistance = null;
+Handle g_hCvarFlashbang = null;
 
 #define VERSION "1.5"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsClientValid(%1))
@@ -98,8 +117,16 @@ public void OnPluginStart()
 	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 	HookConVarChange(g_hCvarAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone"), OnCvarChanged);
 	HookConVarChange(g_hCvarAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim"), OnCvarChanged);
+	HookConVarChange(g_hCvarFov = CreateConVar("sm_aimbot_fov", "20.0", "Will only activate aimbot if target is within this fov of client (1.0 to disable)"), OnCvarChanged);
+	HookConVarChange(g_hCvarDistance = CreateConVar("sm_aimbot_distance", "8000.0", "Will only activate aimbot if target is within this distance of client (1.0 to disable)"), OnCvarChanged);
+	HookConVarChange(g_hCvarFlashbang = CreateConVar("sm_aimbot_flashed", "1", "Block aimbot when player is flashed"), OnCvarChanged);
+	
+	g_fMaxAimFov = GetConVarFloat(g_hCvarFov);
+	g_fMaxAimDistance = GetConVarFloat(g_hCvarDistance);
+	g_bAimbotFlashed = GetConVarBool(g_hCvarFlashbang);
 	
 	HookEventEx("weapon_fire", Event_WeaponFire, EventHookMode_Pre);
+	HookEventEx("player_blind", Event_PlayerBlind, EventHookMode_Pre);
 	RegAdminCmd("sm_aimbot", Cmd_Aimbot, ADMFLAG_CHEATS);
 	
 	g_bCSGO = GetEngineVersion() == Engine_CSGO ? true : false;
@@ -139,7 +166,14 @@ public void OnCvarChanged(Handle hConvar, char[] chOldValue, char[] chNewValue)
 		}
 	} else if (hConvar == g_hCvarAimbotAutoAim) {
 		g_bAimbotAutoAim = GetConVarInt(g_hCvarAimbotAutoAim) >= 1;
+	} else if (hConvar == g_hCvarFov) {
+		g_fMaxAimFov = GetConVarFloat(g_hCvarFov);
+	} else if (hConvar == g_hCvarDistance) {
+		g_fMaxAimDistance = GetConVarFloat(g_hCvarDistance);
+	} else if (hConvar == g_hCvarFlashbang) {
+		g_bAimbotFlashed = GetConVarBool(g_hCvarFlashbang);
 	}
+	
 }
 
 public void OnClientPutInServer(int iClient) {
@@ -359,25 +393,37 @@ stock int GetClosestClient(int iClient)
 		if (iClient == i || GetClientTeam(i) == iClientTeam || !IsPlayerAlive(i)) {
 			continue;
 		}
-		
+
 		GetClientAbsOrigin(i, fTargetOrigin); fTargetDistance = GetVectorDistance(fClientOrigin, fTargetOrigin);
-		
+
 		if (fTargetDistance > fClosestDistance && fClosestDistance > -1.0) {
 			continue;
 		}
-		
+
 		if (!ClientCanSeeTarget(iClient, i)) {
 			continue;
 		}
-		
+
 		if(GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
 			continue;
 		}
-		
+
+		if (g_fMaxAimDistance != 0.0 && fTargetDistance > g_fMaxAimDistance) {
+			continue;
+		}
+
+		if (g_fMaxAimFov != 0.0 && !IsTargetInSightRange(iClient, i, g_fMaxAimFov, g_fMaxAimDistance)) {
+			continue;
+		}
+
+		if (g_bAimbotFlashed && g_bFlashed[iClient]) {
+			continue;
+		}
+
 		fClosestDistance = fTargetDistance;
 		iClosestTarget = i;
 	}
-	
+
 	return iClosestTarget;
 }
 
@@ -431,4 +477,75 @@ stock bool IsClientValid(int iClient)
 	}
 	
 	return IsClientInGame(iClient);
-} 
+}
+
+stock bool IsTargetInSightRange(int client, int target, float angle = 90.0, float distance = 0.0, bool heightcheck = true, bool negativeangle = false)
+{
+	if(angle > 360.0)
+		angle = 360.0;
+		
+	if(angle < 0.0)
+		return false;
+		
+	float clientpos[3];
+	float targetpos[3];
+	float anglevector[3];
+	float targetvector[3];
+	float resultangle;
+	float resultdistance;
+	
+	GetClientEyeAngles(client, anglevector);
+	anglevector[0] = anglevector[2] = 0.0;
+	GetAngleVectors(anglevector, anglevector, NULL_VECTOR, NULL_VECTOR);
+	NormalizeVector(anglevector, anglevector);
+	if(negativeangle)
+		NegateVector(anglevector);
+
+	GetClientAbsOrigin(client, clientpos);
+	GetClientAbsOrigin(target, targetpos);
+	
+	if(heightcheck && distance > 0)
+		resultdistance = GetVectorDistance(clientpos, targetpos);
+		
+	clientpos[2] = targetpos[2] = 0.0;
+	MakeVectorFromPoints(clientpos, targetpos, targetvector);
+	NormalizeVector(targetvector, targetvector);
+	
+	resultangle = RadToDeg(ArcCosine(GetVectorDotProduct(targetvector, anglevector)));
+	
+	if(resultangle <= angle/2)	
+	{
+		if(distance > 0)
+		{
+			if(!heightcheck)
+				resultdistance = GetVectorDistance(clientpos, targetpos);
+				
+			if(distance >= resultdistance)
+				return true;
+			else return false;
+		}
+		else return true;
+	}
+	
+	return false;
+}
+
+public Action Event_PlayerBlind(Handle event, const char[] name, bool dontBroadcast)
+{ 
+	int client = GetClientOfUserId(GetEventInt(event, "userid"));
+    
+	if (GetEntPropFloat(client, Prop_Send, "m_flFlashMaxAlpha") >= 180.0)
+    {
+    	float duration = GetEntPropFloat(client, Prop_Send, "m_flFlashDuration");
+        if (duration >= 1.5)
+        {
+            g_bFlashed[client] = true;
+            CreateTimer(duration, UnFlashed_Timer, client);
+        }
+    }
+}
+
+public Action UnFlashed_Timer(Handle timer, int client)
+{
+	g_bFlashed[client] = false;
+}
