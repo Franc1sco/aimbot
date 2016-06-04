@@ -66,6 +66,9 @@ CHANGELOG
 		- Improved support for other games.
 		- Improved ConVar change hooks.
 		- Improved No recoil on other games (Maybe)
+	1.7.3 ~
+		- Fix error on TF2 related to a netprop not existing.
+		- Further improve support on games other than CSGO.
 		
 
 ****************************************************************************************************
@@ -124,7 +127,7 @@ ConVar g_hCvarDistance = null;
 ConVar g_hCvarFlashbang = null;
 ConVar g_hCvarRecoilMode = null;
 
-#define VERSION "1.7.2"
+#define VERSION "1.7.3"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsClientValid(%1))
 
 public Plugin myinfo = 
@@ -421,9 +424,17 @@ stock void LookAtClient(int iClient, int iTarget)
 	//Recoil Control System
 	if (g_iRecoilMode == 2) {
 		float vecPunchAngle[3];
-		GetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", vecPunchAngle);
-		fFinalPos[0] -= vecPunchAngle[0] * GetConVarFloat(g_hPredictionConVars[5]);
-		fFinalPos[1] -= vecPunchAngle[1] * GetConVarFloat(g_hPredictionConVars[5]);
+		
+		if (g_iEngineVersion == Engine_CSGO || g_iEngineVersion == Engine_CSS) {
+			GetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", vecPunchAngle);
+		} else {
+			GetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", vecPunchAngle);
+		}
+		
+		if(g_hPredictionConVars[5] != null) {
+			fFinalPos[0] -= vecPunchAngle[0] * GetConVarFloat(g_hPredictionConVars[5]);
+			fFinalPos[1] -= vecPunchAngle[1] * GetConVarFloat(g_hPredictionConVars[5]);
+		}
 	}
 	
 	TeleportEntity(iClient, NULL_VECTOR, fFinalPos, NULL_VECTOR);
@@ -471,8 +482,10 @@ stock int GetClosestClient(int iClient)
 			continue;
 		}
 		
-		if (GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
-			continue;
+		if (g_iEngineVersion == Engine_CSGO) {
+			if (GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0) {
+				continue;
+			}
 		}
 		
 		if (g_fMaxAimDistance != 0.0 && fTargetDistance > g_fMaxAimDistance) {
