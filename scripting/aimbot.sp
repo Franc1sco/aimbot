@@ -61,6 +61,12 @@ CHANGELOG
 		- Prevent trying to send ConVars to Fake clients (Should fix some errors)
 		- Only send recoil convars if sm_aimbot_norecoil 1 otherwise let RCS do its magic.
 		- Removed sending a ConVar which does not work.
+	
+	1.7.2 ~
+		- Improved support for other games.
+		- Improved ConVar change hooks.
+		- Improved No recoil on other games (Maybe)
+		
 
 ****************************************************************************************************
 Planned: 
@@ -91,7 +97,6 @@ ETIQUETTE.
 BOOLS.
 *****************************************************************************************************/
 bool g_bAimbot[MAXPLAYERS + 1] = false;
-bool g_bCSGO = false;
 bool g_bAimbotEveryone = false;
 bool g_bAimbotAutoAim = false;
 bool g_bAimbotFlashed = true;
@@ -100,6 +105,8 @@ bool g_bFlashed[MAXPLAYERS + 1] = false;
 INTEGERS.
 *****************************************************************************************************/
 int g_iRecoilMode = 1;
+EngineVersion g_iEngineVersion = Engine_Unknown;
+
 /****************************************************************************************************
 FLOATS.
 *****************************************************************************************************/
@@ -110,14 +117,14 @@ float g_fMaxAimDistance = 0.0;
 CONVARS.
 *****************************************************************************************************/
 Handle g_hPredictionConVars[9] = null;
-Handle g_hCvarAimbotEveryone = null;
-Handle g_hCvarAimbotAutoAim = null;
-Handle g_hCvarFov = null;
-Handle g_hCvarDistance = null;
-Handle g_hCvarFlashbang = null;
-Handle g_hCvarRecoilMode = null;
+ConVar g_hCvarAimbotEveryone = null;
+ConVar g_hCvarAimbotAutoAim = null;
+ConVar g_hCvarFov = null;
+ConVar g_hCvarDistance = null;
+ConVar g_hCvarFlashbang = null;
+ConVar g_hCvarRecoilMode = null;
 
-#define VERSION "1.7.1"
+#define VERSION "1.7.2"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsClientValid(%1))
 
 public Plugin myinfo = 
@@ -132,6 +139,7 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
+	
 	HookConVarChange(g_hCvarAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone"), OnCvarChanged);
 	HookConVarChange(g_hCvarAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim"), OnCvarChanged);
 	HookConVarChange(g_hCvarRecoilMode = CreateConVar("sm_aimbot_norecoil", "1", "Aimbot recoil control - 0 = disable, 1 = remove recoil, 2 = recoil control system"), OnCvarChanged);
@@ -145,31 +153,28 @@ public void OnPluginStart()
 	
 	HookEventEx("weapon_fire", Event_WeaponFire, EventHookMode_Pre);
 	HookEventEx("player_blind", Event_PlayerBlind, EventHookMode_Pre);
+	
 	RegAdminCmd("sm_aimbot", Cmd_Aimbot, ADMFLAG_CHEATS);
 	
-	g_bCSGO = GetEngineVersion() == Engine_CSGO ? true : false;
-	
-	if (g_bCSGO) {
-		g_hPredictionConVars[0] = FindConVar("weapon_accuracy_nospread");
-		g_hPredictionConVars[1] = FindConVar("weapon_recoil_cooldown");
-		g_hPredictionConVars[2] = FindConVar("weapon_recoil_decay1_exp");
-		g_hPredictionConVars[3] = FindConVar("weapon_recoil_decay2_exp");
-		g_hPredictionConVars[4] = FindConVar("weapon_recoil_decay2_lin");
-		g_hPredictionConVars[5] = FindConVar("weapon_recoil_scale");
-		g_hPredictionConVars[6] = FindConVar("weapon_recoil_suppression_shots");
-		g_hPredictionConVars[7] = FindConVar("weapon_recoil_variance");
-		g_hPredictionConVars[8] = FindConVar("weapon_recoil_view_punch_extra");
-	}
+	g_hPredictionConVars[0] = FindConVar("weapon_accuracy_nospread");
+	g_hPredictionConVars[1] = FindConVar("weapon_recoil_cooldown");
+	g_hPredictionConVars[2] = FindConVar("weapon_recoil_decay1_exp");
+	g_hPredictionConVars[3] = FindConVar("weapon_recoil_decay2_exp");
+	g_hPredictionConVars[4] = FindConVar("weapon_recoil_decay2_lin");
+	g_hPredictionConVars[5] = FindConVar("weapon_recoil_scale");
+	g_hPredictionConVars[6] = FindConVar("weapon_recoil_suppression_shots");
+	g_hPredictionConVars[7] = FindConVar("weapon_recoil_variance");
+	g_hPredictionConVars[8] = FindConVar("weapon_recoil_view_punch_extra");
 	
 	OnConfigsExecuted();
 	
 	LoopValidClients(iClient) {
-		OnClientPutInServer(iClient);
+		OnClientPostAdminCheck(iClient);
 	}
 	
-	g_bAimbotEveryone = GetConVarInt(g_hCvarAimbotEveryone) >= 1;
-	g_bAimbotAutoAim = GetConVarInt(g_hCvarAimbotAutoAim) >= 1;
+	g_iEngineVersion = GetEngineVersion();
 }
+
 
 public void OnConfigsExecuted() {
 	AutoExecConfig();
@@ -178,32 +183,36 @@ public void OnConfigsExecuted() {
 public void OnCvarChanged(Handle hConvar, char[] chOldValue, char[] chNewValue)
 {
 	if (hConvar == g_hCvarAimbotEveryone) {
-		g_bAimbotEveryone = GetConVarInt(g_hCvarAimbotEveryone) >= 1;
+		g_bAimbotEveryone = view_as<bool>(StringToInt(chNewValue));
 		
 		LoopValidClients(iClient) {
 			ToggleAim(iClient, g_bAimbotEveryone);
 		}
 	} else if (hConvar == g_hCvarAimbotAutoAim) {
-		g_bAimbotAutoAim = GetConVarInt(g_hCvarAimbotAutoAim) >= 1;
+		g_bAimbotAutoAim = view_as<bool>(StringToInt(chNewValue));
 	} else if (hConvar == g_hCvarFov) {
-		g_fMaxAimFov = GetConVarFloat(g_hCvarFov);
+		g_fMaxAimFov = StringToFloat(chNewValue);
 	} else if (hConvar == g_hCvarDistance) {
-		g_fMaxAimDistance = GetConVarFloat(g_hCvarDistance);
+		g_fMaxAimDistance = StringToFloat(chNewValue);
 	} else if (hConvar == g_hCvarFlashbang) {
-		g_bAimbotFlashed = GetConVarBool(g_hCvarFlashbang);
+		g_bAimbotFlashed = view_as<bool>(StringToInt(chNewValue));
 	} else if (hConvar == g_hCvarRecoilMode) {
 		g_iRecoilMode = GetConVarInt(g_hCvarRecoilMode);
 	}
-	
 }
 
-public void OnClientPutInServer(int iClient) {
-	g_bAimbot[iClient] = g_bAimbotEveryone;
-	
+public void OnClientPostAdminCheck(int iClient)
+{
 	SDKHook(iClient, SDKHook_PreThink, OnClientThink);
 	SDKHook(iClient, SDKHook_PreThinkPost, OnClientThink);
 	SDKHook(iClient, SDKHook_PostThink, OnClientThink);
 	SDKHook(iClient, SDKHook_PostThinkPost, OnClientThink);
+	
+	ToggleAim(iClient, g_bAimbotEveryone);
+}
+
+public void OnClientDisconnect(int iClient) {
+	ToggleAim(iClient, g_bAimbotEveryone);
 }
 
 public Action Cmd_Aimbot(int iClient, int iArgs)
@@ -228,7 +237,7 @@ public Action Cmd_Aimbot(int iClient, int iArgs)
 			return Plugin_Handled;
 		}
 		
-		bool bEnable = iEnable == 1 ? true:false;
+		bool bEnable = view_as<bool>(iEnable);
 		
 		// Process the targets 
 		char chTargetName[MAX_TARGET_LENGTH]; int iTargetList[MAXPLAYERS];
@@ -267,46 +276,61 @@ stock void ToggleAim(int iClient, bool bEnabled = false)
 	// Toggle aimbot.
 	g_bAimbot[iClient] = bEnabled;
 	
-	// Ignore bots from here.
-	if (IsFakeClient(iClient)) {
+	// Ignore bots or clients that are not ingame from here.
+	if (IsFakeClient(iClient) || IsClientInGame(iClient)) {
 		return;
 	}
 	
 	// Print client message.
 	PrintToChat(iClient, "[SM] Aimbot has been %s for you.", g_bAimbot[iClient] ? "Enabled":"Disabled");
 	
-	// Fix some prediction issues. (Tested only in CSGO)
-	if (!g_bCSGO) {
-		return;
+	// Fix some prediction issues.
+	char chValues[10];
+	
+	if (g_hPredictionConVars[0] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 1:GetConVarInt(g_hPredictionConVars[0]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[0], chValues);
 	}
 	
-	char chValues[10];
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 1:GetConVarInt(g_hPredictionConVars[0]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[0], chValues);
+	if (g_hPredictionConVars[1] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[1]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[1], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[1]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[1], chValues);
+	if (g_hPredictionConVars[2] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[2]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[2], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[2]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[2], chValues);
+	if (g_hPredictionConVars[3] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[3]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[3], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[3]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[3], chValues);
+	if (g_hPredictionConVars[4] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[4]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[4], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 99999:GetConVarInt(g_hPredictionConVars[4]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[4], chValues);
+	if (g_hPredictionConVars[5] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[5]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[5], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[5]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[5], chValues);
+	if (g_hPredictionConVars[6] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 500:GetConVarInt(g_hPredictionConVars[6]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[6], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 500:GetConVarInt(g_hPredictionConVars[6]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[6], chValues);
+	if (g_hPredictionConVars[7] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[7]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[7], chValues);
+	}
 	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[7]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[7], chValues);
-	
-	IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[8]), chValues, 10);
-	SendConVarValue(iClient, g_hPredictionConVars[8], chValues);
+	if (g_hPredictionConVars[8] != null) {
+		IntToString(g_bAimbot[iClient] && g_iRecoilMode == 1 ? 0:GetConVarInt(g_hPredictionConVars[8]), chValues, 10);
+		SendConVarValue(iClient, g_hPredictionConVars[8], chValues);
+	}
 }
 
 public Action Event_WeaponFire(Handle hEvent, const char[] chName, bool bDontBroadcast)
@@ -338,11 +362,12 @@ public void OnClientThink(int iClient)
 		return;
 	}
 	
-	// No Spread Addition
-	SetEntPropFloat(iActiveWeapon, Prop_Send, "m_fAccuracyPenalty", 0.0);
-	
 	// Not sure which Props exist in other games.
-	if (g_bCSGO) {
+	if (g_iEngineVersion == Engine_CSGO || g_iEngineVersion == Engine_CSS) {
+		
+		// No Spread Addition
+		SetEntPropFloat(iActiveWeapon, Prop_Send, "m_fAccuracyPenalty", 0.0);
+		
 		if (g_iRecoilMode == 1) {
 			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", NULL_VECTOR);
 			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngleVel", NULL_VECTOR);
@@ -350,6 +375,7 @@ public void OnClientThink(int iClient)
 		}
 	} else {
 		SetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", NULL_VECTOR);
+		SetEntPropVector(iClient, Prop_Send, "m_vecPunchAngleVel", NULL_VECTOR);
 	}
 }
 
