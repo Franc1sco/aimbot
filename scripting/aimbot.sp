@@ -277,7 +277,7 @@ stock void ToggleAim(int iClient, bool bEnabled = false)
 	g_bAimbot[iClient] = bEnabled;
 	
 	// Ignore bots or clients that are not ingame from here.
-	if (IsFakeClient(iClient) || IsClientInGame(iClient)) {
+	if (IsFakeClient(iClient) || !IsClientInGame(iClient)) {
 		return;
 	}
 	
