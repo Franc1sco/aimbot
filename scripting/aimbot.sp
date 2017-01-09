@@ -9,7 +9,10 @@ Credits:
 		SM9();  			
 						http://steamcommunity.com/id/sm91337/
 						Rewrite / improvements.
-					
+		
+		Headline
+						http://steamcommunity.com/id/headline22
+						Small API improvments. Wanted some credit, but am not an author.
 ****************************************************************************************************
 CHANGELOG
 ****************************************************************************************************
@@ -69,8 +72,15 @@ CHANGELOG
 	1.7.3 ~
 		- Fix error on TF2 related to a netprop not existing.
 		- Further improve support on games other than CSGO.
+	1.8 ~
+		- Major syntax overhaul
+		- Code cleaning
+		- Removed depreciated CVAR flag
+		- Added Cvar sm_aimbot_text (0/1)
+				Controls if the plugin should be allowed to write to users when they connect
+				1 = Enable text (default)
+				0 = Disable text
 		
-
 ****************************************************************************************************
 Planned: 
 ****************************************************************************************************
@@ -96,29 +106,28 @@ ETIQUETTE.
 #pragma newdecls required
 #pragma semicolon 1
 
+#define VERSION "1.8"
+
 /****************************************************************************************************
 BOOLS.
 *****************************************************************************************************/
 bool g_bAimbot[MAXPLAYERS + 1] = false;
 bool g_bFlashed[MAXPLAYERS + 1] = false;
-/****************************************************************************************************
-INTEGERS.
-*****************************************************************************************************/
-int g_iRecoilMode = 1;
-EngineVersion g_iEngineVersion = Engine_Unknown;
+
 
 /****************************************************************************************************
 CONVARS.
 *****************************************************************************************************/
-ConVar g_cvPredictionConVars[9] = {null, ...};
-ConVar g_cvCvarAimbotEveryone = null;
-ConVar g_cvCvarAimbotAutoAim = null;
-ConVar g_cvCvarFov = null;
-ConVar g_cvCvarDistance = null;
-ConVar g_cvCvarFlashbang = null;
-ConVar g_cvCvarRecoilMode = null;
 
-#define VERSION "1.7.3"
+ConVar g_cvPredictionConVars[9] = {null, ...};
+ConVar g_cvAimbotEveryone = null;
+ConVar g_cvAimbotAutoAim = null;
+ConVar g_cvFov = null;
+ConVar g_cvDistance = null;
+ConVar g_cvFlashbang = null;
+ConVar g_cvRecoilMode = null;
+ConVar g_cvShowText = null;
+
 
 public Plugin myinfo = 
 {
@@ -133,12 +142,13 @@ public void OnPluginStart()
 {
 	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 	
-	g_cvCvarAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone");
-	g_cvCvarAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim");
-	g_cvCvarRecoilMode = CreateConVar("sm_aimbot_norecoil", "1", "Aimbot recoil control - 0 = disable, 1 = remove recoil, 2 = recoil control system");
-	g_cvCvarFov = CreateConVar("sm_aimbot_fov", "20.0", "Will only activate aimbot if target is within this fov of client (1.0 to disable)");
-	g_cvCvarDistance = CreateConVar("sm_aimbot_distance", "8000.0", "Will only activate aimbot if target is within this distance of client (1.0 to disable)");
-	g_cvCvarFlashbang = CreateConVar("sm_aimbot_flashed", "1", "Block aimbot when player is flashed");
+	g_cvAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone");
+	g_cvAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim");
+	g_cvRecoilMode = CreateConVar("sm_aimbot_norecoil", "1", "Aimbot recoil control - 0 = disable, 1 = remove recoil, 2 = recoil control system");
+	g_cvFov = CreateConVar("sm_aimbot_fov", "20.0", "Will only activate aimbot if target is within this fov of client (1.0 to disable)");
+	g_cvDistance = CreateConVar("sm_aimbot_distance", "8000.0", "Will only activate aimbot if target is within this distance of client (1.0 to disable)");
+	g_cvFlashbang = CreateConVar("sm_aimbot_flashed", "1", "Block aimbot when player is flashed");
+	g_cvShowText = CreateConVar("sm_aimbot_text", "1", "Enables whether the plugin writes text to users. Set to 0 to hide plugin");
 	
 	HookEventEx("weapon_fire", Event_WeaponFire, EventHookMode_Pre);
 	HookEventEx("player_blind", Event_PlayerBlind, EventHookMode_Pre);
@@ -165,11 +175,11 @@ public void OnPluginStart()
 		}
 	}
 	
-	g_iEngineVersion = GetEngineVersion();
 }
 
 
-public void OnConfigsExecuted() {
+public void OnConfigsExecuted()
+{
 	AutoExecConfig();
 }
 
@@ -181,21 +191,25 @@ public void OnClientPostAdminCheck(int iClient)
 	SDKHook(iClient, SDKHook_PostThink, OnClientThink);
 	SDKHook(iClient, SDKHook_PostThinkPost, OnClientThink);
 	
-	ToggleAim(iClient, g_cvCvarAimbotEveryone.BoolValue);
+	ToggleAim(iClient, g_cvAimbotEveryone.BoolValue);
 }
 
-public void OnClientDisconnect(int iClient) {
-	ToggleAim(iClient, g_cvCvarAimbotEveryone.BoolValue);
+public void OnClientDisconnect(int iClient)
+{
+	ToggleAim(iClient, g_cvAimbotEveryone.BoolValue);
 }
 
 public Action Cmd_Aimbot(int iClient, int iArgs)
 {
-	if (iArgs < 1) {
+	if (iArgs < 1)
+	{
 		ToggleAim(iClient, g_bAimbot[iClient] ? false:true);
 	}
 	
-	else {
-		if (iArgs < 2) {
+	else
+	{
+		if (iArgs < 2)
+		{
 			ReplyToCommand(iClient, "Usage: sm_aimbot <Player> <0/1>");
 			return Plugin_Handled;
 		}
@@ -205,7 +219,8 @@ public Action Cmd_Aimbot(int iClient, int iArgs)
 		
 		int iEnable = StringToInt(chEnable);
 		
-		if (iEnable > 1 || iEnable < 0) {
+		if (iEnable > 1 || iEnable < 0)
+		{
 			ReplyToCommand(iClient, "Usage: sm_aimbot <Player> <0/1>");
 			return Plugin_Handled;
 		}
@@ -216,26 +231,26 @@ public Action Cmd_Aimbot(int iClient, int iArgs)
 		char chTargetName[MAX_TARGET_LENGTH]; int iTargetList[MAXPLAYERS];
 		int iTargetCount; bool bTargetTranslate;
 		
-		if ((iTargetCount = ProcessTargetString(chTarget, 0, iTargetList, MAXPLAYERS, COMMAND_FILTER_CONNECTED, chTargetName, sizeof(chTargetName), bTargetTranslate)) <= 0) {
+		if ((iTargetCount = ProcessTargetString(chTarget, 0, iTargetList, MAXPLAYERS, COMMAND_FILTER_CONNECTED, chTargetName, sizeof(chTargetName), bTargetTranslate)) <= 0)
+		{
 			ReplyToCommand(iClient, "Player not found");
 			return Plugin_Handled;
 		}
 		
 		// Apply to all targets 
-		for (int i = 0; i < iTargetCount; i++) {
+		for (int i = 0; i < iTargetCount; i++)
+		{
 			int iClient2 = iTargetList[i];
 			
-			if (!IsValidClient(iClient2)) {
-				continue;
-			}
-			
-			if (bEnable == g_bAimbot[iClient]) {
+			if (!IsValidClient(iClient2) || bEnable == g_bAimbot[iClient])
+			{
 				continue;
 			}
 			
 			ToggleAim(iClient2, bEnable);
 			
-			if (iClient != iClient2) {
+			if (iClient != iClient2)
+			{
 				ReplyToCommand(iClient, "Aimbot has been %s for %N.", bEnable ? "Enabled":"Disabled", iClient2);
 			}
 		}
@@ -250,58 +265,71 @@ stock void ToggleAim(int iClient, bool bEnabled = false)
 	g_bAimbot[iClient] = bEnabled;
 	
 	// Ignore bots or clients that are not ingame from here.
-	if (IsFakeClient(iClient) || !IsClientInGame(iClient)) {
+	if (IsFakeClient(iClient) || !IsClientInGame(iClient))
+	{
 		return;
 	}
 	
 	// Print client message.
-	PrintToChat(iClient, "[SM] Aimbot has been %s for you.", g_bAimbot[iClient] ? "Enabled":"Disabled");
+	if (g_cvShowText.BoolValue)
+	{
+		PrintToChat(iClient, "[SM] Aimbot has been %s for you.", g_bAimbot[iClient] ? "Enabled":"Disabled");
+	}
 	
 	// Fix some prediction issues.
 	char chValues[10];
 	
-	if (g_cvPredictionConVars[0] != null) {
-		IntToString(((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1)) ? 1 : g_cvPredictionConVars[0].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[0] != null)
+	{
+		IntToString(((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1)) ? 1 : g_cvPredictionConVars[0].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[0], chValues);
 	}
 	
-	if (g_cvPredictionConVars[1] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[1].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[1] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[1].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[1], chValues);
 	}
 	
-	if (g_cvPredictionConVars[2] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[2].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[2] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[2].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[2], chValues);
 	}
 	
-	if (g_cvPredictionConVars[3] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[3].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[3] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[3].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[3], chValues);
 	}
 	
-	if (g_cvPredictionConVars[4] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[4].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[4] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 99999 : g_cvPredictionConVars[4].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[4], chValues);
 	}
 	
-	if (g_cvPredictionConVars[5] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[5].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[5] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[5].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[5], chValues);
 	}
 	
-	if (g_cvPredictionConVars[6] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 500 : g_cvPredictionConVars[6].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[6] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 500 : g_cvPredictionConVars[6].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[6], chValues);
 	}
 	
-	if (g_cvPredictionConVars[7] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[7].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[7] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[7].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[7], chValues);
 	}
 	
-	if (g_cvPredictionConVars[8] != null) {
-		IntToString((g_bAimbot[iClient] && g_cvCvarRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[8].IntValue, chValues, 10);
+	if (g_cvPredictionConVars[8] != null)
+	{
+		IntToString((g_bAimbot[iClient] && g_cvRecoilMode.IntValue == 1) ? 0 : g_cvPredictionConVars[8].IntValue, chValues, 10);
 		SendConVarValue(iClient, g_cvPredictionConVars[8], chValues);
 	}
 }
@@ -340,13 +368,14 @@ public void OnClientThink(int iClient)
 	}
 	
 	// Not sure which Props exist in other games.
-	if (g_iEngineVersion == Engine_CSGO || g_iEngineVersion == Engine_CSS)
+	if (GetEngineVersion() == Engine_CSGO || GetEngineVersion() == Engine_CSS)
 	{
 		
 		// No Spread Addition
 		SetEntPropFloat(iActiveWeapon, Prop_Send, "m_fAccuracyPenalty", 0.0);
 		
-		if (g_iRecoilMode == 1) {
+		if (g_cvRecoilMode.IntValue == 1)
+		{
 			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", NULL_VECTOR);
 			SetEntPropVector(iClient, Prop_Send, "m_aimPunchAngleVel", NULL_VECTOR);
 			SetEntPropVector(iClient, Prop_Send, "m_viewPunchAngle", NULL_VECTOR);
@@ -373,12 +402,13 @@ public Action OnPlayerRunCmd(int iClient, int &iButtons, int &iImpulse, float fV
 		return Plugin_Continue;
 	}
 	
-	if (iButtons & IN_ATTACK || g_cvCvarAimbotAutoAim.BoolValue)
+	if ((iButtons & IN_ATTACK) == IN_ATTACK || g_cvAimbotAutoAim.BoolValue)
 	{
 		int iTarget = GetClosestClient(iClient);
 		int iClipAmmo = GetEntProp(iActiveWeapon, Prop_Send, "m_iClip1");
 		
-		if (iClipAmmo > 0 && iTarget > 0) {
+		if (iClipAmmo > 0 && iTarget > 0)
+		{
 			LookAtClient(iClient, iTarget);
 		}
 	}
@@ -402,11 +432,12 @@ stock void LookAtClient(int iClient, int iTarget)
 	GetVectorAngles(fFinalPos, fFinalPos);
 	
 	//Recoil Control System
-	if (g_iRecoilMode == 2)
+	if (g_cvRecoilMode.IntValue == 2)
 	{
 		float vecPunchAngle[3];
 		
-		if (g_iEngineVersion == Engine_CSGO || g_iEngineVersion == Engine_CSS) {
+		if (GetEngineVersion() == Engine_CSGO || GetEngineVersion() == Engine_CSS)
+		{
 			GetEntPropVector(iClient, Prop_Send, "m_aimPunchAngle", vecPunchAngle);
 		}
 		else
@@ -414,7 +445,8 @@ stock void LookAtClient(int iClient, int iTarget)
 			GetEntPropVector(iClient, Prop_Send, "m_vecPunchAngle", vecPunchAngle);
 		}
 		
-		if(g_cvPredictionConVars[5] != null) {
+		if(g_cvPredictionConVars[5] != null)
+		{
 			fFinalPos[0] -= vecPunchAngle[0] * GetConVarFloat(g_cvPredictionConVars[5]);
 			fFinalPos[1] -= vecPunchAngle[1] * GetConVarFloat(g_cvPredictionConVars[5]);
 		}
@@ -473,7 +505,7 @@ stock int GetClosestClient(int iClient)
 				continue;
 			}
 			
-			if (g_iEngineVersion == Engine_CSGO)
+			if (GetEngineVersion() == Engine_CSGO)
 			{
 				if (GetEntPropFloat(i, Prop_Send, "m_fImmuneToGunGameDamageTime") > 0.0)
 				{
@@ -481,17 +513,17 @@ stock int GetClosestClient(int iClient)
 				}
 			}
 			
-			if (g_cvCvarDistance.FloatValue != 0.0 && fTargetDistance > g_cvCvarDistance.FloatValue)
+			if (g_cvDistance.FloatValue != 0.0 && fTargetDistance > g_cvDistance.FloatValue)
 			{
 				continue;
 			}
 			
-			if (g_cvCvarFov.FloatValue != 0.0 && !IsTargetInSightRange(iClient, i, g_cvCvarFov.FloatValue, g_cvCvarDistance.FloatValue))
+			if (g_cvFov.FloatValue != 0.0 && !IsTargetInSightRange(iClient, i, g_cvFov.FloatValue, g_cvDistance.FloatValue))
 			{
 				continue;
 			}
 			
-			if (g_cvCvarFlashbang.BoolValue && g_bFlashed[iClient])
+			if (g_cvFlashbang.BoolValue && g_bFlashed[iClient])
 			{
 				continue;
 			}
@@ -538,11 +570,13 @@ public bool Base_TraceFilter(int iEntity, int iContentsMask, int iData)
 #if defined _smac_included
 public Action SMAC_OnCheatDetected(int iClient, const char[] chModule, DetectionType dType)
 {
-	if (!g_bAimbot[iClient]) {
+	if (!g_bAimbot[iClient])
+	{
 		return Plugin_Continue;
 	}
 	
-	if (dType == Detection_Aimbot || dType == Detection_Eyeangles) {
+	if (dType == Detection_Aimbot || dType == Detection_Eyeangles)
+	{
 		return Plugin_Handled;
 	}
 	
