@@ -1,20 +1,57 @@
-/*  SM Aimbot
- *
- *  Copyright (C) 2017 Francisco 'Franc1sco' García
- * 
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation, either version 3 of the License, or (at your option) 
- * any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT 
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS 
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along with 
- * this program. If not, see http://www.gnu.org/licenses/.
- */
- 
+/****************************************************************************************************
+	AIMBOT
+*****************************************************************************************************
+Credits: 
+		Franc1sco franug 
+						http://steamcommunity.com/id/franug
+						Intial plugin / idea / improvements.
+		
+		SM9();  			
+						http://steamcommunity.com/id/sm91337/
+						Rewrite / improvements.
+					
+****************************************************************************************************
+CHANGELOG
+****************************************************************************************************
+	1.0 ~ 
+		- First release.
+	1.0.1 ~ 
+		- Added public cvar.
+	1.1 ~
+		- Added support for giving aimbot to other players.
+	1.2 / 1.3 ~ 
+		- Improvements to aimbot.
+		- Improvements to CSGO NoRecoil.
+	1.4 ~ 
+		- Cleaned & rewrote plugin in new Syntax.
+		- Much improved NoRecoil for CSGO.
+		- Added NoSpread (Not pefect)
+		- Send ConVars to client to improve prediction.
+	1.4.1 ~ 
+		- Fixed incompatbility issue with some games.
+	1.5 ~
+		- Added Cvar sm_aimbot_everyone (0/1)
+					When this Cvar is on, aimbot is auto toggled on everyone including players that join the server.		
+		- Added Cvar sm_aimbot_autoaim
+					When this Cvar is on the aimbot will auto aim but not auto-fire, this feature will come later.
+		- Improved aimbot toggling.
+					New usage: sm_aimbot <Player> <0/1> or sm_aimbot will enable for you only.	
+		- Fixed Error spam on Weapon_Fire.
+		- Further improved clientside prediction for much better No Spread!
+		- Protection to prevent SMAC bans.
+		- Improved aimbot accuracy slightly.
+
+****************************************************************************************************
+Planned: 
+****************************************************************************************************
+- Add auto shoot feature.
+- Improve No Spread / No Recoil  / Client prediction further.
+- Maybe add Wallhack?.
+- Suggestions?
+
+****************************************************************************************************
+INCLUDES
+***************************************************************************************************/
 #include <sourcemod>
 #include <sdktools>
 #include <sdkhooks>
@@ -49,7 +86,7 @@ Handle g_hCvarAimbotAutoAim = null;
 public Plugin myinfo = 
 {
 	name = "SM Aimbot", 
-	author = "Franc1sco franug", 
+	author = "Franc1sco franug, SM9", 
 	description = "Give you a legal aimbot made by sourcemod", 
 	version = VERSION, 
 	url = "https://github.com/Franc1sco/aimbot"
