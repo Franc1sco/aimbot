@@ -1,13 +1,13 @@
 #if defined _smac_included
-#endinput
+  #endinput
 #endif
 #define _smac_included
 
 #include <smac_stocks>
 
 /* Globals */
-#define SMAC_VERSION	"0.8.7.0"
-#define SMAC_URL		"https://bitbucket.org/xCoderx/sourcemod-anti-cheat/"
+#define SMAC_VERSION	"0.8.6.0"
+#define SMAC_URL		"http://smac.sx"
 #define SMAC_AUTHOR		"SMAC Development Team"
 #define SMAC_MOD_ERROR	"This module will not work for this mod and should be removed."
 
@@ -67,9 +67,6 @@ enum DetectionType {
 	
 	// smac_hl2dm_fixes
 	Detection_GravityGunExploit = 1100,
-	
-	// smac_kac_banlist
-	Detection_GlobalBanned_KAC = 1200,
 };
 
 /* Natives */
@@ -89,11 +86,11 @@ public SharedPlugin:__pl_smac =
 {
 	name = "smac",
 	file = "smac.smx",
-	#if defined REQUIRE_PLUGIN
+#if defined REQUIRE_PLUGIN
 	required = 1,
-	#else
+#else
 	required = 0,
-	#endif
+#endif
 };
 
 #if !defined REQUIRE_PLUGIN

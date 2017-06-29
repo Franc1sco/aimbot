@@ -19,7 +19,8 @@
 #include <sdkhooks>
 
 // Protection for SMAC users.
-#tryinclude <smac>
+#undef REQUIRE_PLUGIN
+#include <smac>
 
 /****************************************************************************************************
 ETIQUETTE.
@@ -42,7 +43,7 @@ Handle g_hPredictionConVars[9] = null;
 Handle g_hCvarAimbotEveryone = null;
 Handle g_hCvarAimbotAutoAim = null;
 
-#define VERSION "1.5"
+#define VERSION "1.6"
 #define LoopValidClients(%1) for(int %1 = 1; %1 < MaxClients; %1++) if(IsClientValid(%1))
 
 public Plugin myinfo = 
@@ -56,7 +57,7 @@ public Plugin myinfo =
 
 public void OnPluginStart()
 {
-	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
+	CreateConVar("sm_aimbot_version", VERSION, "", FCVAR_SPONLY | FCVAR_DONTRECORD | FCVAR_NOTIFY);
 	HookConVarChange(g_hCvarAimbotEveryone = CreateConVar("sm_aimbot_everyone", "0", "Aimbot everyone"), OnCvarChanged);
 	HookConVarChange(g_hCvarAimbotAutoAim = CreateConVar("sm_aimbot_autoaim", "1", "Aimbot auto aim"), OnCvarChanged);
 	
@@ -366,7 +367,6 @@ public bool Base_TraceFilter(int iEntity, int iContentsMask, int iData) {
 	return iEntity == iData;
 }
 
-#if defined _smac_included
 public Action SMAC_OnCheatDetected(int iClient, const char[] chModule, DetectionType dType)
 {
 	if(!g_bAimbot[iClient]) {
@@ -379,7 +379,6 @@ public Action SMAC_OnCheatDetected(int iClient, const char[] chModule, Detection
 	
 	return Plugin_Continue;
 }
-#endif
 
 stock bool IsClientValid(int iClient)
 {
